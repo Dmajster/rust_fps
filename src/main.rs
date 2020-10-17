@@ -1,5 +1,6 @@
 mod input;
 mod renderer;
+mod texture;
 
 use futures::executor::block_on;
 use std::time::{Duration, Instant};
@@ -87,6 +88,8 @@ fn main() {
                         .expect("failed getting input resource?");
 
                     input_manager.process_keyboard(input);
+
+                    render_state.input(event);
 
                     if input_manager.key_held(VirtualKeyCode::Escape) {
                         *control_flow = ControlFlow::Exit

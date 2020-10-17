@@ -7,14 +7,15 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-image = "0.23"
-winit = "0.22"
+anyhow = "1.0"
+bytemuck = "1.4"
 cgmath = "0.17"
-wgpu = "0.6"
 env_logger = "0.7"
 log = "0.4"
 futures = "0.3"
-bytemuck = "1.4"
+image = "0.23"
+wgpu = "0.6"
+winit = "0.22"
 
 legion = "0.3.1"
 
