@@ -1,8 +1,11 @@
+mod camera;
 mod input;
 mod renderer;
 mod texture;
 
+use camera::Camera;
 use futures::executor::block_on;
+use renderer::State;
 use std::time::{Duration, Instant};
 
 use input::Input;
@@ -12,6 +15,33 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
+
+#[system(for_each)]
+fn update_camera(#[resource] input: &Input, camera: &mut Camera) {
+    use cgmath::InnerSpace;
+    let forward = camera.target - camera.eye;
+    let forward_norm = forward.normalize();
+    let forward_mag = forward.magnitude();
+    let speed = 0.2;
+
+    if input.key_held(VirtualKeyCode::W) && forward_mag > speed {
+        camera.eye += forward_norm * speed;
+    }
+    if input.key_held(VirtualKeyCode::S) {
+        camera.eye -= forward_norm * speed;
+    }
+
+    let right = forward_norm.cross(camera.up);
+    let forward = camera.target - camera.eye;
+    let forward_mag = forward.magnitude();
+
+    if input.key_held(VirtualKeyCode::D) {
+        camera.eye = camera.target - (forward + right * speed).normalize() * forward_mag;
+    }
+    if input.key_held(VirtualKeyCode::A) {
+        camera.eye = camera.target - (forward - right * speed).normalize() * forward_mag;
+    }
+}
 
 #[system]
 fn update_print(#[resource] game_clock: &GameClock) {
@@ -53,17 +83,24 @@ impl GameClock {
 
 fn main() {
     env_logger::init();
+
+
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    // Since main can't be async, we're going to need to block
-    let mut render_state = block_on(renderer::State::new(&window));
 
     let mut world = World::default();
     let mut resources = Resources::default();
+    resources.insert(block_on(renderer::State::new(&window)));
+    resources.insert(GameClock::new(60));
+    resources.insert(Input::default());
+
+    world.push((Camera::new(),));
 
     let mut update_schedule = Schedule::builder()
         .add_system(update_print_system())
+        .add_system(update_camera_system())
+        .add_system(new_render_system())
         .build();
 
     let mut fixed_update_schedule = Schedule::builder()
@@ -71,9 +108,6 @@ fn main() {
         .build();
 
     let mut fixed_update_time_accumulator = 0.0;
-
-    resources.insert(GameClock::new(60));
-    resources.insert(Input::default());
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -89,18 +123,17 @@ fn main() {
 
                     input_manager.process_keyboard(input);
 
-                    render_state.input(event);
-
                     if input_manager.key_held(VirtualKeyCode::Escape) {
                         *control_flow = ControlFlow::Exit
                     }
                 }
-                WindowEvent::Resized(physical_size) => {
-                    render_state.resize(*physical_size);
-                }
-                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                    render_state.resize(**new_inner_size);
-                }
+                // TODO implement with ECS
+                // WindowEvent::Resized(physical_size) => {
+                //     render_state.resize(*physical_size);
+                // }
+                // WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                //     render_state.resize(**new_inner_size);
+                // }
                 _ => {}
             },
             Event::RedrawRequested(_) => {
@@ -130,10 +163,6 @@ fn main() {
                 update_schedule.execute(&mut world, &mut resources);
 
                 // TODO gaffer on games physics state lerping???
-
-                // TODO convert this to ECS?
-                render_state.update();
-                render_state.render();
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
@@ -141,4 +170,10 @@ fn main() {
             _ => {}
         }
     });
+}
+
+#[system(for_each)]
+pub fn new_render(#[resource] renderer: &mut State, camera: &Camera) {
+    renderer.update(camera);
+    renderer.render();
 }
