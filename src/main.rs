@@ -18,10 +18,9 @@ use winit::{
 
 #[system(for_each)]
 fn update_camera(#[resource] input: &Input, camera: &mut Camera) {
-    use cgmath::InnerSpace;
     let forward = camera.target - camera.eye;
-    let forward_norm = forward.normalize();
-    let forward_mag = forward.magnitude();
+    let forward_norm = forward.normalized();
+    let forward_mag = forward.mag();
     let speed = 0.2;
 
     if input.key_held(VirtualKeyCode::W) && forward_mag > speed {
@@ -33,13 +32,13 @@ fn update_camera(#[resource] input: &Input, camera: &mut Camera) {
 
     let right = forward_norm.cross(camera.up);
     let forward = camera.target - camera.eye;
-    let forward_mag = forward.magnitude();
+    let forward_mag = forward.mag();
 
     if input.key_held(VirtualKeyCode::D) {
-        camera.eye = camera.target - (forward + right * speed).normalize() * forward_mag;
+        camera.eye = camera.target - (forward + right * speed).normalized() * forward_mag;
     }
     if input.key_held(VirtualKeyCode::A) {
-        camera.eye = camera.target - (forward - right * speed).normalize() * forward_mag;
+        camera.eye = camera.target - (forward - right * speed).normalized() * forward_mag;
     }
 }
 
