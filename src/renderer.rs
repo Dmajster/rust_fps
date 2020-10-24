@@ -1,16 +1,11 @@
 use std::iter;
 
-use legion::system;
 use wgpu::util::DeviceExt;
-use winit::{
-    event::*,
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
-};
+use winit::window::Window;
 
 use ultraviolet::*;
 
-use crate::{camera::Camera, texture};
+use crate::texture;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -46,35 +41,24 @@ impl Vertex {
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [-0.0868241, 0.49240386, 0.0],
-        tex_coords: [0.4131759, 0.00759614],
-    }, // A
+        position: [0.0, 0.0, 0.0],
+        tex_coords: [0.0, 0.0],
+    },
     Vertex {
-        position: [-0.49513406, 0.06958647, 0.0],
-        tex_coords: [0.0048659444, 0.43041354],
-    }, // B
+        position: [1.0, 0.0, 0.0],
+        tex_coords: [1.0, 0.0],
+    },
     Vertex {
-        position: [-0.21918549, -0.44939706, 0.0],
-        tex_coords: [0.28081453, 0.949397057],
-    }, // C
+        position: [1.0, 1.0, 0.0],
+        tex_coords: [1.0, 1.0],
+    },
     Vertex {
-        position: [0.35966998, -0.3473291, 0.0],
-        tex_coords: [0.85967, 0.84732911],
-    }, // D
-    Vertex {
-        position: [0.44147372, 0.2347359, 0.0],
-        tex_coords: [0.9414737, 0.2652641],
-    }, // E
+        position: [0.0, 1.0, 0.0],
+        tex_coords: [0.0, 1.0],
+    },
 ];
 
-const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
-
-pub const OPENGL_TO_WGPU_MATRIX: Mat4 = Mat4::new(
-    Vec4::new(1.0, 0.0, 0.0, 0.0),
-    Vec4::new(0.0, 1.0, 0.0, 0.0),
-    Vec4::new(0.0, 0.0, 0.5, 0.0),
-    Vec4::new(0.0, 0.0, 0.5, 1.0),
-);
+const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -90,10 +74,6 @@ impl Uniforms {
         Self {
             view_proj: Mat4::identity(),
         }
-    }
-
-    fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_proj = camera.build_view_projection_matrix();
     }
 }
 
@@ -152,7 +132,7 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let diffuse_bytes = include_bytes!("happy-tree.png");
+        let diffuse_bytes = include_bytes!("assets/happy-tree.png");
         let diffuse_texture =
             texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png").unwrap();
 
@@ -225,8 +205,8 @@ impl State {
             label: Some("uniform_bind_group"),
         });
 
-        let vs_module = device.create_shader_module(wgpu::include_spirv!("shader.vert.spv"));
-        let fs_module = device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"));
+        let vs_module = device.create_shader_module(wgpu::include_spirv!("assets/shader.vert.spv"));
+        let fs_module = device.create_shader_module(wgpu::include_spirv!("assets/shader.frag.spv"));
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -248,7 +228,7 @@ impl State {
             }),
             rasterization_state: Some(wgpu::RasterizationStateDescriptor {
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: wgpu::CullMode::Back,
+                cull_mode: wgpu::CullMode::None,
                 depth_bias: 0,
                 depth_bias_slope_scale: 0.0,
                 depth_bias_clamp: 0.0,
@@ -311,16 +291,15 @@ impl State {
         // camera.aspect = self.sc_desc.width as f32 / self.sc_desc.height as f32;
     }
 
-    pub fn update(&mut self, camera: &Camera) {
-        self.uniforms.update_view_proj(camera);
+    pub fn render(&mut self, camera_view_projection_matrix: Mat4) {
+        self.uniforms.view_proj = camera_view_projection_matrix;
+
         self.queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::cast_slice(&[self.uniforms]),
         );
-    }
 
-    pub fn render(&mut self) {
         let frame = self
             .swap_chain
             .get_current_frame()

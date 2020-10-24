@@ -2,44 +2,97 @@ mod camera;
 mod input;
 mod renderer;
 mod texture;
+mod gltf;
+
+mod code;
+use code::components::{position::Position, rotation::Rotation};
 
 use camera::Camera;
 use futures::executor::block_on;
 use renderer::State;
 use std::time::{Duration, Instant};
+use ultraviolet::{Rotor3, Similarity3, Vec2, Vec3};
 
 use input::Input;
+use legion::component;
 use legion::{system, Resources, Schedule, World};
+
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
-#[system(for_each)]
-fn update_camera(#[resource] input: &Input, camera: &mut Camera) {
-    let forward = camera.target - camera.eye;
-    let forward_norm = forward.normalized();
-    let forward_mag = forward.mag();
-    let speed = 0.2;
+#[system()]
+fn update_mouse(#[resource] input: &mut Input) {
+    input.mouse.acceleration.x = input.mouse.position.x - input.mouse.old_position.x;
+    input.mouse.acceleration.y = input.mouse.position.y - input.mouse.old_position.y;
+    input.mouse.old_position = input.mouse.position;
 
-    if input.key_held(VirtualKeyCode::W) && forward_mag > speed {
-        camera.eye += forward_norm * speed;
+    // println!(
+    //     "mouse acceleration x: {}, y: {}",
+    //     input.mouse.acceleration.x, input.mouse.acceleration.y
+    // );
+}
+
+#[system(for_each)]
+#[filter(component::<Camera>())]
+fn move_camera(
+    #[resource] game_clock: &GameClock,
+    #[resource] input: &Input,
+    position: &mut Position,
+    rotation: &mut Rotation,
+) {
+    let delta_time = game_clock.last_frame_duration.as_secs_f32();
+    let movement_speed_in_meters_per_second = 5.0;
+
+    let horizontal_rotor = Rotor3::from_rotation_xz(input.mouse.acceleration.x * delta_time);
+    *rotation = *rotation * horizontal_rotor;
+
+    let right_vector = Vec3::new(1.0, 0.0, 0.0).rotated_by(*rotation);
+    let forward_vector = Vec3::new(0.0, 0.0, 1.0).rotated_by(*rotation);
+
+    let mut movement = Vec2::default();
+
+    if input.key_held(VirtualKeyCode::W) {
+        movement.y -= 1.0;
     }
     if input.key_held(VirtualKeyCode::S) {
-        camera.eye -= forward_norm * speed;
-    }
-
-    let right = forward_norm.cross(camera.up);
-    let forward = camera.target - camera.eye;
-    let forward_mag = forward.mag();
-
-    if input.key_held(VirtualKeyCode::D) {
-        camera.eye = camera.target - (forward + right * speed).normalized() * forward_mag;
+        movement.y += 1.0;
     }
     if input.key_held(VirtualKeyCode::A) {
-        camera.eye = camera.target - (forward - right * speed).normalized() * forward_mag;
+        movement.x -= 1.0;
     }
+    if input.key_held(VirtualKeyCode::D) {
+        movement.x += 1.0;
+    }
+
+    *position += (movement.x * right_vector + movement.y * forward_vector)
+        * movement_speed_in_meters_per_second
+        * delta_time;
+
+    // let forward = camera.target - camera.eye;
+    // let forward_norm = forward.normalized();
+    // let forward_mag = forward.mag();
+    // let speed = 0.2;
+
+    // if input.key_held(VirtualKeyCode::W) && forward_mag > speed {
+    //     camera.eye += forward_norm * speed;
+    // }
+    // if input.key_held(VirtualKeyCode::S) {
+    //     camera.eye -= forward_norm * speed;
+    // }
+
+    // let right = forward_norm.cross(camera.up);
+    // let forward = camera.target - camera.eye;
+    // let forward_mag = forward.mag();
+
+    // if input.key_held(VirtualKeyCode::D) {
+    //     camera.eye = camera.target - (forward + right * speed).normalized() * forward_mag;
+    // }
+    // if input.key_held(VirtualKeyCode::A) {
+    //     camera.eye = camera.target - (forward - right * speed).normalized() * forward_mag;
+    // }
 }
 
 #[system]
@@ -83,10 +136,8 @@ impl GameClock {
 fn main() {
     env_logger::init();
 
-
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-
 
     let mut world = World::default();
     let mut resources = Resources::default();
@@ -94,16 +145,23 @@ fn main() {
     resources.insert(GameClock::new(60));
     resources.insert(Input::default());
 
-    world.push((Camera::new(),));
+    gltf::GltfLoader::load("./src/assets/render_test_scene.gltf");
+
+    world.push((
+        Position::new(0.0, 0.0, 10.0),
+        Rotation::from_euler_angles(0.0, 0.0, 0.0).normalized(),
+        Camera::new(16.0 / 9.0, 45.0f32.to_radians(), 0.1, 100.0),
+    ));
 
     let mut update_schedule = Schedule::builder()
-        .add_system(update_print_system())
-        .add_system(update_camera_system())
-        .add_system(new_render_system())
+        // .add_system(update_print_system())
+        .add_system(update_mouse_system())
+        .add_system(move_camera_system())
+        .add_system(render_system())
         .build();
 
     let mut fixed_update_schedule = Schedule::builder()
-        .add_system(fixed_update_print_system())
+        // .add_system(fixed_update_print_system())
         .build();
 
     let mut fixed_update_time_accumulator = 0.0;
@@ -125,6 +183,14 @@ fn main() {
                     if input_manager.key_held(VirtualKeyCode::Escape) {
                         *control_flow = ControlFlow::Exit
                     }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    let mut input_manager = resources
+                        .get_mut::<Input>()
+                        .expect("failed getting input resource?");
+
+                    input_manager.mouse.position.x = position.x as f32;
+                    input_manager.mouse.position.y = position.y as f32;
                 }
                 // TODO implement with ECS
                 // WindowEvent::Resized(physical_size) => {
@@ -172,7 +238,16 @@ fn main() {
 }
 
 #[system(for_each)]
-pub fn new_render(#[resource] renderer: &mut State, camera: &Camera) {
-    renderer.update(camera);
-    renderer.render();
+fn render(
+    #[resource] renderer: &mut State,
+    position: &Position,
+    rotation: &mut Rotation,
+    camera: &mut Camera,
+) {
+    let camera_matrix = Similarity3::new(position.clone(), rotation.clone(), 1.0)
+        .into_homogeneous_matrix()
+        .inversed();
+    let projection_matrix = camera.projection_matrix;
+
+    renderer.render(projection_matrix * camera_matrix)
 }

@@ -18,6 +18,7 @@ winit = "0.22"
 
 legion = "0.3.1"
 ultraviolet = "0.7.4"
+gltf = { version = "0.15", features=["import"] }
 
 [build-dependencies]
 anyhow = "1.0"

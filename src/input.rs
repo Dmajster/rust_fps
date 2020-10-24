@@ -1,23 +1,30 @@
 use std::collections::HashMap;
+use ultraviolet::Vec2;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
-struct Mouse {}
+#[derive(Default)]
+pub struct Mouse {
+    pub acceleration: Vec2,
+    pub position: Vec2,
+    pub old_position: Vec2,
+}
 
 #[derive(Default)]
-struct KeyboardKey {
+pub struct KeyboardKey {
     pressed: bool,
     held: bool,
     released: bool,
 }
 
 #[derive(Default)]
-struct Keyboard {
-    keys: HashMap<VirtualKeyCode, KeyboardKey>,
+pub struct Keyboard {
+    pub keys: HashMap<VirtualKeyCode, KeyboardKey>,
 }
 
 #[derive(Default)]
 pub struct Input {
-    keyboard: Keyboard,
+    pub keyboard: Keyboard,
+    pub mouse: Mouse,
 }
 
 impl Input {
