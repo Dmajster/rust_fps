@@ -6,6 +6,9 @@ use gltf::{buffer::Data as BufferData, image::Data as ImageData, Document, Seman
 pub struct Mesh {
     pub positions: Vec<u8>,
     pub indices: Vec<u8>,
+
+    pub normals: Vec<u8>,
+    pub texture_coordinates: Vec<u8>,
 }
 
 pub struct GltfLoader {}
@@ -14,29 +17,47 @@ impl GltfLoader {
     pub fn load<P: AsRef<Path>>(path: P) -> Vec<Mesh> {
         let (schema, buffers, _): (Document, Vec<BufferData>, Vec<ImageData>) =
             gltf::import(path).unwrap();
-    
+
         let mut meshes = Vec::new();
 
         for mesh in schema.meshes() {
             println!("mesh: {}", mesh.name().unwrap_or("none"));
-
             for primitive in mesh.primitives() {
                 let mut mesh = Mesh::default();
 
+                println!("new primitive");
+
                 for (attribute_type, accessor) in primitive.attributes() {
+                    println!(
+                        "\tattribute: {:?} accessor component size: {:?}",
+                        attribute_type,
+                        accessor.size()
+                    );
+
                     match attribute_type {
                         Semantic::Positions => {
                             mesh.positions =
                                 GltfLoader::get_accessor_data(&schema, accessor.index(), &buffers);
                         }
-                        Semantic::Normals => {}
+                        Semantic::Normals => {
+                            mesh.normals =
+                                GltfLoader::get_accessor_data(&schema, accessor.index(), &buffers);
+                        }
                         Semantic::Tangents => {}
                         Semantic::Colors(_) => {}
-                        Semantic::TexCoords(_) => {}
+                        Semantic::TexCoords(_) => {
+                            mesh.texture_coordinates =
+                                GltfLoader::get_accessor_data(&schema, accessor.index(), &buffers);
+                        }
                         Semantic::Joints(_) => {}
                         Semantic::Weights(_) => {}
                     }
                 }
+
+                println!(
+                    "\tindices component size: {:?}",
+                    primitive.indices().unwrap().size()
+                );
 
                 mesh.indices = GltfLoader::get_accessor_data(
                     &schema,

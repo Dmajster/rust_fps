@@ -1,5 +1,6 @@
-use std::iter;
+use std::{iter, mem};
 
+use crate::gltf::GltfLoader;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
@@ -7,58 +8,37 @@ use ultraviolet::*;
 
 use crate::texture;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-struct Vertex {
-    position: [f32; 3],
-    tex_coords: [f32; 2],
-}
+// #[repr(C)]
+// #[derive(Copy, Clone, Debug)]
+// struct Vertex {
+//     position: [f32; 3],
+//     texture_coordinates: [f32; 2],
+// }
 
-unsafe impl bytemuck::Pod for Vertex {}
-unsafe impl bytemuck::Zeroable for Vertex {}
+// unsafe impl bytemuck::Pod for Vertex {}
+// unsafe impl bytemuck::Zeroable for Vertex {}
 
-impl Vertex {
-    fn desc<'a>() -> wgpu::VertexBufferDescriptor<'a> {
-        use std::mem;
-        wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttributeDescriptor {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float3,
-                },
-                wgpu::VertexAttributeDescriptor {
-                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float2,
-                },
-            ],
-        }
-    }
-}
-
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0.0, 0.0, 0.0],
-        tex_coords: [0.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, 0.0, 0.0],
-        tex_coords: [1.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, 1.0, 0.0],
-        tex_coords: [1.0, 1.0],
-    },
-    Vertex {
-        position: [0.0, 1.0, 0.0],
-        tex_coords: [0.0, 1.0],
-    },
-];
-
-const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+// impl Vertex {
+//     fn desc<'a>(&self) -> wgpu::VertexBufferDescriptor<'a> {
+//         use std::mem;
+//         wgpu::VertexBufferDescriptor {
+//             stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
+//             step_mode: wgpu::InputStepMode::Vertex,
+//             attributes: &[
+//                 wgpu::VertexAttributeDescriptor {
+//                     offset: 0,
+//                     shader_location: 0,
+//                     format: wgpu::VertexFormat::Float3,
+//                 },
+//                 wgpu::VertexAttributeDescriptor {
+//                     offset: self.position.len() as wgpu::BufferAddress,
+//                     shader_location: 1,
+//                     format: wgpu::VertexFormat::Float2,
+//                 },
+//             ],
+//         }
+//     }
+// }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -98,6 +78,18 @@ pub struct State {
 
 impl State {
     pub async fn new(window: &Window) -> Self {
+        let meshes = GltfLoader::load("./src/assets/render_test_scene.gltf");
+
+        let mesh = meshes.get(0).unwrap();
+
+        let normals = bytemuck::cast_slice::<u8,[f32; 3]>(&mesh.normals);
+        
+        for normal in normals.iter() {
+            println!("normal: {:?}", normal);
+        }
+
+
+
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -132,9 +124,10 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let diffuse_bytes = include_bytes!("assets/happy-tree.png");
+        let diffuse_bytes = include_bytes!("assets/cube_texture_uv.png");
         let diffuse_texture =
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png").unwrap();
+            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "cube_texture_uv.png")
+                .unwrap();
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -215,6 +208,44 @@ impl State {
                 push_constant_ranges: &[],
             });
 
+        let posbd = wgpu::VertexBufferDescriptor {
+            stride: mem::size_of::<[f32;3]>()  as wgpu::BufferAddress,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttributeDescriptor {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float3,
+                },
+            ],
+        };
+
+        let normbd = wgpu::VertexBufferDescriptor {
+            stride: mem::size_of::<[f32;3]>()  as wgpu::BufferAddress,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttributeDescriptor {
+                    offset: mesh.positions.len() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float3,
+                },
+            ],
+        };
+
+        let uvbd = wgpu::VertexBufferDescriptor {
+            stride: mem::size_of::<[f32;2]>() as wgpu::BufferAddress,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttributeDescriptor {
+                    offset: (mesh.positions.len() + mesh.normals.len()) as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float2,
+                },
+            ],
+        };
+
+
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
@@ -228,7 +259,7 @@ impl State {
             }),
             rasterization_state: Some(wgpu::RasterizationStateDescriptor {
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: wgpu::CullMode::None,
+                cull_mode: wgpu::CullMode::Back,
                 depth_bias: 0,
                 depth_bias_slope_scale: 0.0,
                 depth_bias_clamp: 0.0,
@@ -244,7 +275,7 @@ impl State {
             depth_stencil_state: None,
             vertex_state: wgpu::VertexStateDescriptor {
                 index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[Vertex::desc()],
+                vertex_buffers: &[posbd, normbd, uvbd],
             },
             sample_count: 1,
             sample_mask: !0,
@@ -253,15 +284,21 @@ impl State {
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+            contents: &[
+                mesh.positions.as_slice(),
+                mesh.normals.as_slice(),
+                mesh.texture_coordinates.as_slice(),
+            ]
+            .concat(),
             usage: wgpu::BufferUsage::VERTEX,
         });
+
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
+            contents: mesh.indices.as_slice(),
             usage: wgpu::BufferUsage::INDEX,
         });
-        let num_indices = INDICES.len() as u32;
+        let num_indices = (mesh.indices.len() / 2) as u32;
 
         Self {
             surface,
@@ -334,6 +371,8 @@ impl State {
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(2, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..));
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }

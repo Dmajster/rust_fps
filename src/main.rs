@@ -1,10 +1,10 @@
 mod camera;
+mod code;
+mod gltf;
 mod input;
 mod renderer;
 mod texture;
-mod gltf;
 
-mod code;
 use code::components::{position::Position, rotation::Rotation};
 
 use camera::Camera;
@@ -144,8 +144,6 @@ fn main() {
     resources.insert(block_on(renderer::State::new(&window)));
     resources.insert(GameClock::new(60));
     resources.insert(Input::default());
-
-    gltf::GltfLoader::load("./src/assets/render_test_scene.gltf");
 
     world.push((
         Position::new(0.0, 0.0, 10.0),
